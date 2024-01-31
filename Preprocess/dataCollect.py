@@ -27,6 +27,11 @@ def set_name(params):
     if(params['decay']):
         file_name+='_'+params['method']+'_'+str(params['window'])+'_'+str(params['alpha']) +'_'+str(params['p_value'])    
     file_name+='_'+str(params['num_classes'])+'.pickle'
+    # If evaluating AU
+    if params['AU']:
+        file_name = 'Data/AU_total_data_bert_dissent_3classes.pickle'
+    elif params['EU']:
+        file_name = 'Data/EU_total_data_without_Hispanic_Refugee_3.pickle'
     return file_name
 
 
@@ -75,9 +80,109 @@ def get_annotated_data(params):
     temp_read = pd.DataFrame(dict_data)  
     return temp_read    
 
+def get_EU_training_data(data,params,tokenizer):
+    '''input: data is a dataframe text ids attentions labels column only'''
+    '''output: training data in the columns post_id,text, attention, labels and targets '''
+
+    majority=params['majority']
+    post_ids_list=[]
+    text_list=[]
+    attention_list=[]
+    label_list=[]
+    target_list=[]
+    count=0
+    count_confused=0
+    print('total_data',len(data))
+    for index,row in tqdm(data.iterrows(),total=len(data)):
+        text=row['text']
+        post_id=row['post_id']
+        # take all target groups annotated at least twice
+        target1 = np.intersect1d(row['target1'],row['target2'])
+        target2 = np.intersect1d(row['target1'],row['target3'])
+        target3 = np.intersect1d(row['target2'],row['target3'])
+        target = np.union1d(np.union1d(target1,target2),target3)
+        # if target contains 'Hispanic' or 'Refugee' = 1, else 0
+        if ('Hispanic' in target) or ('Refugee' in target):
+            target = 1
+        else:
+            target = 0
 
 
+        annotation_list=[row['label1'],row['label2'],row['label3']]
+        annotation=row['final_label']
 
+        if(annotation != 'undecided'):
+            tokens_all,attention_masks=returnMask(row,params,tokenizer)
+            attention_vector= aggregate_attention(attention_masks,row, params)
+            attention_list.append(attention_vector)
+            text_list.append(tokens_all)
+            label_list.append(annotation)
+            post_ids_list.append(post_id)
+            target_list.append(target)
+        else:
+            count_confused+=1
+
+    print("attention_error:",count)
+    print("no_majority:",count_confused)
+    # Calling DataFrame constructor after zipping
+    # both lists, with columns specified
+    training_data = pd.DataFrame(list(zip(post_ids_list,text_list,attention_list,label_list,target_list)),
+                   columns =['Post_id','Text', 'Attention' , 'Label', 'Target'])
+
+
+    filename=set_name(params)
+    training_data.to_pickle(filename)
+    return training_data
+
+def get_AU_training_data(data,params,tokenizer):
+    '''input: data is a dataframe text ids attentions labels column only'''
+    '''output: training data in the columns post_id,text, attention, labels and dissent '''
+
+    majority=params['majority']
+    post_ids_list=[]
+    text_list=[]
+    attention_list=[]
+    label_list=[]
+    dissent_list=[]
+    count=0
+    count_confused=0
+    print('total_data',len(data))
+    for index,row in tqdm(data.iterrows(),total=len(data)):
+        #print(params)
+        text=row['text']
+        post_id=row['post_id']
+
+        annotation_list=[row['label1'],row['label2'],row['label3']]
+        annotation=row['final_label']
+
+        # add number of dissenting annotators to dissent_list
+        if(row['label1'] != row['label2']) and (row['label1'] != row['label3']) and (row['label2'] != row['label3']):
+            annotation = row['label1']
+            count_confused+=1
+            dissent_list.append(2)
+        elif row['label1'] != row['label2'] or row['label2'] != row['label3']:
+            dissent_list.append(1)
+        else:
+            dissent_list.append(0)
+
+        tokens_all,attention_masks=returnMask(row,params,tokenizer)
+        attention_vector= aggregate_attention(attention_masks,row, params)
+        attention_list.append(attention_vector)
+        text_list.append(tokens_all)
+        label_list.append(annotation)
+        post_ids_list.append(post_id)
+
+    print("attention_error:",count)
+    print("no_majority:",count_confused)
+    # Calling DataFrame constructor after zipping
+    # both lists, with columns specified
+    training_data = pd.DataFrame(list(zip(post_ids_list,text_list,attention_list,label_list,dissent_list)),
+                   columns =['Post_id','Text', 'Attention' , 'Label', 'Dissent'])
+
+
+    filename=set_name(params)
+    training_data.to_pickle(filename)
+    return training_data
 
 def get_training_data(data,params,tokenizer):
     '''input: data is a dataframe text ids attentions labels column only'''
@@ -147,7 +252,8 @@ def get_test_data(data,params,message='text'):
         text_list.append(tokens_all)
         label_list.append(annotation)
         post_ids_list.append(post_id)
-    
+
+    print(label_list)
     
     # Calling DataFrame constructor after zipping 
     # both lists, with columns specified 

@@ -159,6 +159,10 @@ def standaloneEval_with_rational(params, test_data=None,extra_data_path=None, to
     logits_all=[]
     attention_all=[]
     input_mask_all=[]
+    #epistemic and aleatoric uncertainty
+    EU_AU_all=[]
+    probabilities_all_10=[]
+    influence_all=[]
     
     # Evaluate data for one epoch
     for step, batch in tqdm(enumerate(test_dataloader),total=len(test_dataloader)):
@@ -181,7 +185,13 @@ def standaloneEval_with_rational(params, test_data=None,extra_data_path=None, to
 
 
         # (source: https://stackoverflow.com/questions/48001598/why-do-we-need-to-call-zero-grad-in-pytorch)
-        #model.zero_grad()        
+        model.zero_grad()
+
+        # Apply Dropout
+
+        if type(model) == nn.Dropout:
+
+
         outputs = model(b_input_ids,
             attention_vals=b_att_val,
             attention_mask=b_input_mask, 
@@ -338,7 +348,8 @@ if __name__=='__main__':
     params['data_file']=dict_data_folder[str(params['num_classes'])]['data_file']
     #test_data=get_test_data(temp_read,params,message='text')
     final_list_dict=get_final_dict_with_rational(params, params['data_file'],topk=5)
-
+    #test_data_without_rational=convert_data(test_data,params,list_dict_org,rational_present=False,topk=topk)
+    #list_dict_without_rational,_=standaloneEval_with_rational(params, test_data=test_data_without_rational, topk=topk,use_ext_df=True)
     
     
     
@@ -346,6 +357,7 @@ if __name__=='__main__':
     path_name_explanation='explanations_dicts/'+path_name.split('/')[1].split('.')[0]+'_'+str(params['att_lambda'])+'_explanation_top5.json'
     with open(path_name_explanation, 'w') as fp:
         fp.write('\n'.join(json.dumps(i,cls=NumpyEncoder) for i in final_list_dict))
+        #fp.write(list_dict_without_rational)
 
 # In[ ]:
 

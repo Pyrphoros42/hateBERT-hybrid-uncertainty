@@ -4,15 +4,14 @@ import torch
 import neptune
 from knockknock import slack_sender
 from transformers import *
-import glob
-from scipy.special import softmax
+import glob 
+from transformers import BertTokenizer
+from transformers import BertForSequenceClassification, AdamW, BertConfig
 import random
 import pandas as pd
 from transformers import BertTokenizer
-
-from HateXplain.plotFigures import plot_correlation_AU_TU
-from Models.utils import masked_cross_entropy,fix_the_random,format_time,save_normal_model,save_bert_model,\
-    predictive_entropy, expected_entropy, mutual_info, softmax_old
+from Models.utils import masked_cross_entropy,fix_the_random,format_time,save_normal_model,save_bert_model
+from sklearn.metrics import accuracy_score,f1_score
 from tqdm import tqdm
 from TensorDataset.datsetSplitter import createDatasetSplit
 from TensorDataset.dataLoader import combine_features
@@ -21,28 +20,27 @@ from sklearn.metrics import accuracy_score,f1_score,roc_auc_score,recall_score,p
 import matplotlib.pyplot as plt
 import time
 import os
+from transformers import BertTokenizer
 import GPUtil
 from sklearn.utils import class_weight
 import json
 from Models.bertModels import *
 from Models.otherModels import *
-from plotFigures import *
 import sys
 import time
 from waiting import wait
-from sklearn.preprocessing import LabelEncoder, RobustScaler
+from sklearn.preprocessing import LabelEncoder
 import numpy as np
 import threading
 import argparse
 import ast
 
-# https://softwareengineering.stackexchange.com/questions/254279/why-doesnt-python-have-a-flatten-function-for-lists
-def flatten(l): return flatten(l[0]) + (flatten(l[1:]) if len(l) > 1 else []) if type(l) is list else [l]
 
-#def softmax(x):
- #   """Compute softmax values for each sets of scores in x."""
-  #  e_x = np.exp(x - np.max(x))
-   # return e_x / e_x.sum(axis=0) # only difference
+
+def softmax(x):
+    """Compute softmax values for each sets of scores in x."""
+    e_x = np.exp(x - np.max(x))
+    return e_x / e_x.sum(axis=0) # only difference
 
 ### gpu selection algo
 def get_gpu():
@@ -72,7 +70,6 @@ def select_model(params,embeddings):
             hidden_dropout_prob=params['dropout_bert'],
             params=params
             )
-            print('Running base BERT')
         else:
             print("Error in bert model name!!!!")
         return model
@@ -92,79 +89,11 @@ def select_model(params,embeddings):
             print("Error in model name!!!!")
         return model
 
-# activating dropout during eval
-# https://stackoverflow.com/questions/66828446/make-predictions-on-on-huggingfaces-bert-with-dropout-on
-def apply_dropout(model):
-    if type(model) == nn.Dropout:
-        model.train()
-
-def remove_indeces(array1,array2,indeces_array):
-    a1 = []
-    a2 = []
-    for i in range(len(array1)):
-        if i not in indeces_array:
-            a1.append(array1[i])
-            a2.append(array2[i])
-    return a1, a2
-
-# Returns an array of indeces of the biggest array elements
-def get_indeces(array, percentage):
-    if not 0 <= percentage < 100:
-        print("Percentage should be between 0 and 100%! Given as an integer")
-        return 0
-    indeces_len = int(len(array)/100*percentage)
-    indeces = np.argpartition(array,-indeces_len)[-indeces_len:]
-    return indeces
-
-
-def get_indeces_acc_eval_true_false(pred_labels=0,true_labels=0,indeces=0, eval_array=0):
-    true_count = 0
-    false_count = 0
-    eval_true = 0
-    eval_false = 0
-    for i in indeces:
-        if pred_labels[i] != true_labels[i]:
-            false_count+=1
-            eval_false += eval_array[i]
-        else:
-            true_count+=1
-            eval_true += eval_array[i]
-
-    accuracy = true_count / (true_count+false_count)
-    return_true = return_false = -1
-    if true_count:
-        return_true = eval_true/true_count
-    if false_count:
-        return_false = eval_false/false_count
-
-    return accuracy, return_true, return_false
-
-
-# Return three arrays of each percentage step along the eval_array, with average accuracy, average evaluation of true predictions, average evaluation of false predictions
-def percentage_eval(eval_array, pred_labels=0, true_labels=0):
-    sorted_eval_array = np.argsort(eval_array)
-    average_acc_array = np.zeros(100)
-    eval_true_array = np.zeros(100)
-    eval_false_array = np.zeros(100)
-    start_index = 0
-    last_index = 0
-    for percentage in range(100):
-        start_index = last_index
-        last_index = int(len(eval_array)/100*(percentage+1))
-        average_acc_array[percentage], eval_true_array[percentage], eval_false_array[percentage] = \
-            get_indeces_acc_eval_true_false(pred_labels=pred_labels,true_labels=true_labels, indeces=sorted_eval_array[start_index:last_index], eval_array=eval_array)
-
-    return average_acc_array, eval_true_array, eval_false_array
-
-
 
 def Eval_phase(params,which_files='test',model=None,test_dataloader=None,device=None):
     if(params['is_model']==True):
         print("model previously passed")
-        if (params['num_dropouts']):
-            model.eval()
-            model.apply(apply_dropout)
-
+        model.eval()
     else:
         return 1
 #         ### Have to modify in the final run
@@ -183,9 +112,6 @@ def Eval_phase(params,which_files='test',model=None,test_dataloader=None,device=
     true_labels=[]
     pred_labels=[]
     logits_all=[]
-    probabilities=[]
-    dissent=[]
-    target=[]
     # Evaluate data for one epoch
     for step, batch in tqdm(enumerate(test_dataloader)):
 
@@ -193,6 +119,7 @@ def Eval_phase(params,which_files='test',model=None,test_dataloader=None,device=
         if step % 40 == 0 and not step == 0:
             # Calculate elapsed time in minutes.
             elapsed = format_time(time.time() - t0)
+
 
         # `batch` contains three pytorch tensors:
         #   [0]: input ids 
@@ -203,164 +130,54 @@ def Eval_phase(params,which_files='test',model=None,test_dataloader=None,device=
         b_att_val = batch[1].to(device)
         b_input_mask = batch[2].to(device)
         b_labels = batch[3].to(device)
-        if params['AU']:
-            # 0 = unanimous, 1 = dissent, 2 = undecided
-            dissent.extend(batch[4].detach())
-            #print(dissent)
-        elif params['EU']:
-            target.extend(batch[4].detach())
 
 
         # (source: https://stackoverflow.com/questions/48001598/why-do-we-need-to-call-zero-grad-in-pytorch)
-        #model.zero_grad()
-        for weight in model.parameters():
-            weight.grad = None
-        num_dropouts = params['num_dropouts']
-        outputs = []
-        #outputs = np.zeros(shape=(num_dropouts, 300)) #, dtype=torch.tensor(requires_grad=False))
-        #outputs = torch.tensor([1,2,3], requires_grad=False)
-        for i in range(num_dropouts):
-            outputs.append(model(b_input_ids,
-                attention_vals=b_att_val,
-                attention_mask=b_input_mask,
-                labels=None,device=device))
-
-        logits = [outputs[i][0] for i in range(num_dropouts)]
+        model.zero_grad()        
+        outputs = model(b_input_ids,
+            attention_vals=b_att_val,
+            attention_mask=b_input_mask, 
+            labels=None,device=device)
+        logits = outputs[0]
         # Move logits and labels to CPU
-        logits = [logits[i].detach().cpu().numpy() for i in range(num_dropouts)]
-        label_ids = b_labels.detach().cpu().numpy()
-
-
+        logits = logits.detach().cpu().numpy()
+        label_ids = b_labels.to('cpu').numpy()
         # Calculate the accuracy for this batch of test sentences.
         # Accumulate the total accuracy.
-        logits_pred = np.average([logits[i] for i in range(num_dropouts)], axis=0)
-        #print(logits_pred)
-        pred_labels+=list(np.argmax(logits_pred,axis=1).flatten())
-        #print(pred_labels)
+        print(logits)
+        pred_labels+=list(np.argmax(logits, axis=1).flatten())
+        print(pred_labels)
         true_labels+=list(label_ids.flatten())
-        #print(true_labels)
-
-        new_logits_pred = [list(softmax(logits, axis=-1)[i]) for i in range(len(logits))]
-        probabilities.extend(np.moveaxis(new_logits_pred,0,-1))
-
-
-        # Weirder array of array
-        #probabilities.append(softmax(logits_pred))
-
-    # Aleatoric Uncertainty
-    exp_entropy = expected_entropy(probabilities)
-    # Total Uncertainty
-    pred_entropy = predictive_entropy(probabilities)
-    # Epistemic Uncertainty = TU - AU
-    epis_uncertainty = mutual_info(pred_entropy=pred_entropy, exp_entropy=exp_entropy)
+        logits_all+=list(logits)
+    
+    print(pred_labels)
+    print(true_labels)
 
 
-    matcharray = np.zeros(len(true_labels))
-    for i in range(len(true_labels)):
-        if true_labels[i] == pred_labels[i]:
-            matcharray[i] = 1
-
-    # Of those with true label = hate speech, how many of them are there with target = 1?
-    # The of the highest X% epistemic uncertainty with true label = hate speech,
-    # how many of them are target = 1?
-    # Do we need true label = hate speech?
-    if params['EU']:
-        # is EU uniquely correlated with target groups?
-        plot_percentage_target_EU(epis_uncertainty, target, params)
-        plot_percentage_target_AU(exp_entropy, target, params)
-        plot_percentage_target_TU(pred_entropy, target, params)
-        plot_EU_by_target(epis_uncertainty, matcharray, true_labels, target, params)
-        plot_AU_by_target(exp_entropy, matcharray, true_labels, target, params)
-        plot_TU_by_target(pred_entropy, matcharray, true_labels, target, params)
-
-
-    if params['AU']:
-        # is AU uniquely correlated with number of dissenting voices?
-        plot_dissent_TU(pred_entropy, dissent, matcharray, params)
-        plot_dissent_EU(epis_uncertainty, dissent, matcharray, params)
-        plot_dissent_AU(exp_entropy, dissent, matcharray, params)
-        # remove 'undecided' labels for accuracy calculation
-        clean_true_labels = []
-        clean_pred_labels = []
-        clean_pred_entropy = []
-        clean_epis_uncertainty= []
-        clean_exp_entropy = []
-        clean_matcharray = []
-        for i in range(len(true_labels)):
-            if dissent[i] != 2:
-                clean_true_labels.append(true_labels[i])
-                clean_pred_labels.append(pred_labels[i])
-                clean_pred_entropy.append(pred_entropy[i])
-                clean_matcharray.append(matcharray[i])
-                clean_epis_uncertainty.append(epis_uncertainty[i])
-                clean_exp_entropy.append(exp_entropy[i])
-
-        testf1=f1_score(clean_true_labels, clean_pred_labels, average='macro')
-        testacc=accuracy_score(clean_true_labels,clean_pred_labels)
-        testprecision=precision_score(clean_true_labels, clean_pred_labels, average='macro')
-        testrecall=recall_score(clean_true_labels, clean_pred_labels, average='macro')
-
-        plot_diff_TU(clean_pred_entropy,clean_true_labels, clean_pred_labels, testacc, testf1, testprecision, testrecall, params)
-
-        aleatoric_acc, aleatoric_true, aleatoric_false = percentage_eval(clean_exp_entropy,pred_labels=clean_pred_labels, true_labels=clean_true_labels)
-        total_acc, total_true, total_false = percentage_eval(clean_pred_entropy,pred_labels=clean_pred_labels, true_labels=clean_true_labels)
-        epistemic_acc, epistemic_true, epistemic_false = percentage_eval(clean_epis_uncertainty,pred_labels=clean_pred_labels, true_labels=clean_true_labels)
-
-        # Plotting AU
-        plot_percentage_AU(aleatoric_acc, aleatoric_true, aleatoric_false, exp_entropy, params)
-
-
-
-        # Plotting TU
-        plot_percentage_TU_total(total_acc, pred_entropy,params)
-        plot_correlation_AU_TU(clean_exp_entropy, clean_pred_entropy, params)
-        plot_percentage_EU(epistemic_acc, epis_uncertainty, params)
-
-    else:
-        testf1=f1_score(true_labels, pred_labels, average='macro')
-        testacc=accuracy_score(true_labels,pred_labels)
-        testprecision=precision_score(true_labels, pred_labels, average='macro')
-        testrecall=recall_score(true_labels, pred_labels, average='macro')
-        plot_diff_TU(pred_entropy,true_labels,pred_labels, testacc, testf1, testprecision, testrecall, params)
-
-
-        aleatoric_acc, aleatoric_true, aleatoric_false = percentage_eval(exp_entropy,pred_labels=pred_labels, true_labels=true_labels)
-        total_acc, total_true, total_false = percentage_eval(pred_entropy,pred_labels=pred_labels, true_labels=true_labels)
-        epistemic_acc, epistemic_true, epistemic_false = percentage_eval(epis_uncertainty,pred_labels=pred_labels, true_labels=true_labels)
-
-        # Plotting AU
-        plot_percentage_AU(aleatoric_acc, aleatoric_true, aleatoric_false, exp_entropy, params)
-        plot_correlation_AU_TU(exp_entropy, pred_entropy, params)
-
-
-        # Plotting TU
-        plot_percentage_TU_total(total_acc, pred_entropy,params)
-
-        plot_percentage_EU(epistemic_acc, epis_uncertainty, params)
-
-        plot_highest_EU_TU_AU(epis_uncertainty,pred_entropy,exp_entropy, params)
-
+    
+    logits_all_final=[]
+    for logits in logits_all:
+        logits_all_final.append(softmax(logits))
+    
+    testf1=f1_score(true_labels, pred_labels, average='macro')
+    testacc=accuracy_score(true_labels,pred_labels)
     if(params['num_classes']==3):
-        #new_prob =
-        #testrocauc=roc_auc_score(true_labels, pred_labels,multi_class='ovo',average='macro')
-        testrocauc=0
+        testrocauc=roc_auc_score(true_labels, logits_all_final,multi_class='ovo',average='macro')
     else:
         #testrocauc=roc_auc_score(true_labels, logits_all_final,multi_class='ovo',average='macro')
         testrocauc=0
-
-
-
+    testprecision=precision_score(true_labels, pred_labels, average='macro')
+    testrecall=recall_score(true_labels, pred_labels, average='macro')
+    
     if(params['logging']!='neptune' or params['is_model'] == True):
         # Report the final accuracy for this validation run.
         print(" Accuracy: {0:.2f}".format(testacc))
         print(" Fscore: {0:.2f}".format(testf1))
         print(" Precision: {0:.2f}".format(testprecision))
         print(" Recall: {0:.2f}".format(testrecall))
-        #print(" Roc Auc: {0:.2f}".format(testrocauc))
-
+        print(" Roc Auc: {0:.2f}".format(testrocauc))
         print(" Test took: {:}".format(format_time(time.time() - t0)))
         #print(ConfusionMatrix(true_labels,pred_labels))
-        #print()
     else:
         bert_model = params['path_files']
         language  = params['language']
@@ -376,11 +193,7 @@ def Eval_phase(params,which_files='test',model=None,test_dataloader=None,device=
         neptune.log_metric('test_rocauc',testrocauc)
         neptune.stop()
 
-
-
-
-
-    return testf1,testacc,testprecision,testrecall#,testrocauc,probabilities
+    return testf1,testacc,testprecision,testrecall,testrocauc,logits_all_final
 
     
     
@@ -401,7 +214,7 @@ def train_model(params,device):
         params['weights']=class_weight.compute_class_weight('balanced',classes=np.unique(y_test),y=y_test).astype('float32')
         #params['weights']=np.array([len(y_test)/y_test.count(encoder.classes_[0]),len(y_test)/y_test.count(encoder.classes_[1]),len(y_test)/y_test.count(encoder.classes_[2])]).astype('float32') 
         
-
+        
     print(params['weights'])
     train_dataloader =combine_features(train,params,is_train=True)   
     validation_dataloader=combine_features(val,params,is_train=False)
@@ -409,7 +222,7 @@ def train_model(params,device):
     
    
     model=select_model(params,embeddings)
-
+    
     if(params["device"]=='cuda'):
         model.cuda()
     optimizer = AdamW(model.parameters(),
@@ -488,15 +301,9 @@ def train_model(params,device):
             b_att_val = batch[1].to(device)
             b_input_mask = batch[2].to(device)
             b_labels = batch[3].to(device)
-            if params['EU']:
-                #print(batch[4].to(device))
-                pass
 
             # (source: https://stackoverflow.com/questions/48001598/why-do-we-need-to-call-zero-grad-in-pytorch)
-            # (a slight speedup: https://pytorch.org/tutorials/recipes/recipes/tuning_guide.html)
-            #model.zero_grad()
-            for weight in model.parameters():
-                weight.grad = None
+            model.zero_grad()        
             outputs = model(b_input_ids, 
                 attention_vals=b_att_val,
                 attention_mask=b_input_mask, 
@@ -538,7 +345,46 @@ def train_model(params,device):
 
         # Store the loss value for plotting the learning curve.
         loss_values.append(avg_train_loss)
-        if epoch_i > 2:
+        train_fscore,train_accuracy,train_precision,train_recall,train_roc_auc,_=Eval_phase(params,'train',model,train_dataloader,device)
+        val_fscore,val_accuracy,val_precision,val_recall,val_roc_auc,_=Eval_phase(params,'val',model,validation_dataloader,device)
+        test_fscore,test_accuracy,test_precision,test_recall,test_roc_auc,logits_all_final=Eval_phase(params,'test',model,test_dataloader,device)
+
+        #Report the final accuracy for this validation run.
+        if(params['logging']=='neptune'):	
+            neptune.log_metric('test_fscore',test_fscore)
+            neptune.log_metric('test_accuracy',test_accuracy)
+            neptune.log_metric('test_precision',test_precision)
+            neptune.log_metric('test_recall',test_recall)
+            neptune.log_metric('test_rocauc',test_roc_auc)
+            
+            neptune.log_metric('val_fscore',val_fscore)
+            neptune.log_metric('val_accuracy',val_accuracy)
+            neptune.log_metric('val_precision',val_precision)
+            neptune.log_metric('val_recall',val_recall)
+            neptune.log_metric('val_rocauc',val_roc_auc)
+    
+            neptune.log_metric('train_fscore',train_fscore)
+            neptune.log_metric('train_accuracy',train_accuracy)
+            neptune.log_metric('train_precision',train_precision)
+            neptune.log_metric('train_recall',train_recall)
+            neptune.log_metric('train_rocauc',train_roc_auc)
+
+            
+        
+    
+        if(val_fscore > best_val_fscore):
+            print(val_fscore,best_val_fscore)
+            best_val_fscore=val_fscore
+            best_test_fscore=test_fscore
+            best_val_roc_auc = val_roc_auc
+            best_test_roc_auc = test_roc_auc
+            
+            
+            best_val_precision = val_precision
+            best_test_precision = test_precision
+            best_val_recall = val_recall
+            best_test_recall = test_recall
+            
             if(params['bert_tokens']):
                 print('Loading BERT tokenizer...')
                 tokenizer = BertTokenizer.from_pretrained('bert-base-uncased', do_lower_case=False)
@@ -546,53 +392,6 @@ def train_model(params,device):
             else:
                 print("Saving model")
                 save_normal_model(model,params)
-            #train_fscore,train_accuracy,train_precision,train_recall,train_roc_auc,_=Eval_phase(params,'train',model,train_dataloader,device)
-            val_fscore,val_accuracy,val_precision,val_recall,val_roc_auc,_=Eval_phase(params,'val',model,validation_dataloader,device)
-            test_fscore,test_accuracy,test_precision,test_recall,test_roc_auc,logits_all_final=Eval_phase(params,'test',model,test_dataloader,device)
-
-            #Report the final accuracy for this validation run.
-            if(params['logging']=='neptune'):
-                neptune.log_metric('test_fscore',test_fscore)
-                neptune.log_metric('test_accuracy',test_accuracy)
-                neptune.log_metric('test_precision',test_precision)
-                neptune.log_metric('test_recall',test_recall)
-                neptune.log_metric('test_rocauc',test_roc_auc)
-
-                neptune.log_metric('val_fscore',val_fscore)
-                neptune.log_metric('val_accuracy',val_accuracy)
-                neptune.log_metric('val_precision',val_precision)
-                neptune.log_metric('val_recall',val_recall)
-                neptune.log_metric('val_rocauc',val_roc_auc)
-
-                # neptune.log_metric('train_fscore',train_fscore)
-                # neptune.log_metric('train_accuracy',train_accuracy)
-                # neptune.log_metric('train_precision',train_precision)
-                # neptune.log_metric('train_recall',train_recall)
-                # neptune.log_metric('train_rocauc',train_roc_auc)
-
-
-
-
-            if(val_fscore > best_val_fscore):
-                print(val_fscore,best_val_fscore)
-                best_val_fscore=val_fscore
-                best_test_fscore=test_fscore
-                best_val_roc_auc = val_roc_auc
-                best_test_roc_auc = test_roc_auc
-
-
-                best_val_precision = val_precision
-                best_test_precision = test_precision
-                best_val_recall = val_recall
-                best_test_recall = test_recall
-
-                # if(params['bert_tokens']):
-                #     print('Loading BERT tokenizer...')
-                #     tokenizer = BertTokenizer.from_pretrained('bert-base-uncased', do_lower_case=False)
-                #     save_bert_model(model,tokenizer,params)
-                # else:
-                #     print("Saving model")
-                #     save_normal_model(model,params)
 
     if(params['logging']=='neptune'):
         neptune.log_metric('best_val_fscore',best_val_fscore)
@@ -719,7 +518,7 @@ if __name__=='__main__':
     my_parser.add_argument('path',
                            metavar='--path_to_json',
                            type=str,
-                           help='The path to json containing the parameters')
+                           help='The path to json containining the parameters')
     
     my_parser.add_argument('use_from_file',
                            metavar='--use_from_file',
@@ -729,7 +528,7 @@ if __name__=='__main__':
     my_parser.add_argument('attention_lambda',
                            metavar='--attention_lambda',
                            type=str,
-                           help='required to assign the contribution of the attention loss')
+                           help='required to assign the contribution of the atention loss')
     
     
     
@@ -767,7 +566,6 @@ if __name__=='__main__':
         ##### comment this line if you don't want to manually set the gpu
         #### parameter required is the gpu id
         #torch.cuda.set_device(0)
-        print("Using %s" % deviceID[0])
         
     else:
         print('Since you dont want to use GPU, using the CPU instead.')

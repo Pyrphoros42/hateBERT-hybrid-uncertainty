@@ -5,6 +5,7 @@ from sklearn.metrics import f1_score
 import random
 import torch
 import pandas as pd
+from scipy.special import softmax
 from sklearn.preprocessing import LabelEncoder
 from sklearn.pipeline import Pipeline
 from collections import Counter
@@ -16,6 +17,7 @@ import torch.nn as nn
 import GPUtil
 import json
 import ast
+import math
 
 ###########################################   SOME COMMON UTILS
 
@@ -119,11 +121,11 @@ def return_params(path_name,att_lambda,num_classes=3):
             
 ########################################### EXTRA METRICS CALCULATOR            
 
-def softmax(x):
+def softmax_old(x):
     """Compute softmax values for each sets of scores in x."""
     e_x = np.exp(x - np.max(x))
     temp=e_x / e_x.sum(axis=0) # only difference
-    
+
     if np.isnan(temp).any()==True:
         return [0.0,1.0,0.0]
     else:
@@ -163,7 +165,38 @@ def masked_cross_entropy(input1,target,mask):
     
     return cr_ent/mask.shape[0]
 
+def entropy(probability_array):
+    entropy_sum = 0
+    for i in range(len(probability_array)):
+        entropy_sum += -probability_array[i] * math.log(probability_array[i],2)
+    return entropy_sum
 
+# Total Uncertainty
+def predictive_entropy(batch_probabilities):
+    pred_entropy = []
+    for data_point in batch_probabilities:
+        mean_prob = np.mean(data_point, axis=1)
+        pred_entropy.append(entropy(mean_prob))
+    return pred_entropy
+
+
+# Aleatoric Uncertainty
+def expected_entropy(batch_probabilities):
+    exp_entropy = []
+    for data_point in batch_probabilities:
+        point_entropy=0
+        for dropout in range(len(data_point)):
+            point_entropy += entropy(data_point[dropout])
+        exp_entropy.append(point_entropy/len(data_point))
+    return exp_entropy
+
+
+#Epistemic Uncertainty
+def mutual_info(pred_entropy=0, exp_entropy=0):
+    if len(pred_entropy) != len(exp_entropy):
+        print("Entropy arrays do not have the same length!")
+        return 0
+    return np.subtract(pred_entropy, exp_entropy)
 
 
 
@@ -183,8 +216,8 @@ def load_model(model, params, use_cuda=False):
     print(model_path)
     """Load model."""
     map_location = 'cpu'
-#     if use_cuda and torch.cuda.is_available():
-    #map_location = 'cuda'
+    if use_cuda and torch.cuda.is_available():
+        map_location = 'cuda'
     model.load_state_dict(torch.load(model_path, map_location))
     return model
 
@@ -208,6 +241,8 @@ def save_normal_model(model, params):
     
 def save_bert_model(model,tokenizer,params):
         output_dir = 'Saved/'+params['path_files']+'_'
+        if params['EU']:
+            output_dir = 'Saved/'+'EU_without_Hispanic_Refugee_'+params['path_files']+'_'
         if(params['train_att']):
             if(params['att_lambda']>=1):
                 params['att_lambda']=int(params['att_lambda'])

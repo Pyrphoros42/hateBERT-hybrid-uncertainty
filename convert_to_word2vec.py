@@ -5,8 +5,8 @@ from gensim.scripts.glove2word2vec import glove2word2vec
 #extract the embeddings into Data folder
 
 # GloVe vectors loading function into temporary file
-glove2word2vec('Data/glove.840B.300d.txt', 'Data/glove.840B.300d_w2v.txt')
+#glove2word2vec('Data/glove.840B.300d.txt', 'Data/glove.840B.300d_w2v.txt')
 
 # Load vectors directly from the file
-word2vecmodel1 = KeyedVectors.load_word2vec_format('Data/glove.840B.300d_w2v.txt', binary=False)
+word2vecmodel1 = KeyedVectors.load_word2vec_format('Data/GoogleNews-vectors-negative300.bin.gz', binary=True)
 word2vecmodel1.save("Data/word2vec.model")

@@ -107,7 +107,7 @@ def standaloneEval(params, test_data=None,extra_data_path=None, topk=2,use_ext_d
         y_test = [ele[2] for ele in test] 
         encoder = LabelEncoder()
         encoder.classes_ = np.load(params['class_names'],allow_pickle=True)
-        params['weights']=class_weight.compute_class_weight('balanced',np.unique(y_test),y_test).astype('float32')
+        params['weights']=class_weight.compute_class_weight('balanced',classes=np.unique(y_test),y=y_test).astype('float32')
     if(extra_data_path!=None):
         params_dash={}
         params_dash['num_classes']=2
@@ -282,7 +282,7 @@ if __name__=='__main__':
     final_dict=get_final_dict(params, params['data_file'],topk=5)
     path_name=model_dict_params[model_to_use]
     path_name_explanation='explanations_dicts/'+path_name.split('/')[1].split('.')[0]+'_bias.json'
-    with open(path_name_explanation, 'w') as fp:
+    with open(path_name_explanation, 'w+') as fp:
         fp.write('\n'.join(json.dumps(i,cls=NumpyEncoder) for i in final_dict))
 
 
