@@ -5,11 +5,13 @@
 [![Generic badge](https://img.shields.io/badge/Dataset-Hatexplain-red.svg)](https://huggingface.co/datasets/hatexplain)
 [![Generic badge](https://img.shields.io/badge/Models-Hatexplain-blue.svg)](https://huggingface.co/models?search=hatexplain)
 
-This repo is a modified version of the code base of [HateXplain](https://github.com/punyajoy/HateXplain). It has been created as part of the Master Thesis "Empirical evaluation of total, epistemic and aleatoric uncertainty of a BERT-based classifier for hate speech". The additions include an implementation for measuring total, epistemic and aleatoric uncertainty based on Shannon entropy, as well as an attempt to evaluate, whether the calculated entropy metrics actually measure what they are supposed to measure. 
+This repo is a slightly expanded and updated version of [HateXplain](https://github.com/punyajoy/HateXplain). 
+
+It has been created as part of the Master Thesis "Empirical evaluation of total, epistemic and aleatoric uncertainty of a BERT-based classifier for hate speech". The additions include an implementation for measuring total, epistemic and aleatoric uncertainty based on Shannon entropy, as well as an attempt to evaluate, whether the calculated entropy metrics actually measure what they are supposed to measure. 
 We find that expected entropy and predictive entropy, our measures for aleatoric and total uncertainty respectively, do behave as expected in our evaluations. Mutual information however, our metric for epistemic uncertainty, does not behave as expected and should therefore in application be replaced with a more appropiate measure.  
 This approach of measuring the faithfulness of calculated epistemic and aleatoric uncertainty metrics is the main contribution.
 
-Instead of using manual_training_inference.py directly, we have written our own main function my_main.py, using the former one.
+Instead of using [manual_training_inference.py](https://github.com/Pyrphoros42/hateBERT-hybrid-uncertainty/blob/master/manual_training_inference.py) directly, we have written our own main function [my_main.py](https://github.com/Pyrphoros42/hateBERT-hybrid-uncertainty/blob/master/my_main.py), using the former one.
 
 
 # :mag_right: HateXplain: A Benchmark Dataset for Explainable Hate Speech Detection [Accepted at AAAI 2021]
