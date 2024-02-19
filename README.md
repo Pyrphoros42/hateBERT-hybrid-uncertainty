@@ -5,6 +5,12 @@
 [![Generic badge](https://img.shields.io/badge/Dataset-Hatexplain-red.svg)](https://huggingface.co/datasets/hatexplain)
 [![Generic badge](https://img.shields.io/badge/Models-Hatexplain-blue.svg)](https://huggingface.co/models?search=hatexplain)
 
+This repo is a modified version of the code base of [HateXplain](https://github.com/punyajoy/HateXplain). It has been created as part of the Master Thesis "Empirical evaluation of total, epistemic and aleatoric uncertainty of a BERT-based classifier for hate speech". The additions include an implementation for measuring total, epistemic and aleatoric uncertainty based on Shannon entropy, as well as an attempt to evaluate, whether the calculated entropy metrics actually measure what they are supposed to measure. 
+We find that expected entropy and predictive entropy, our measures for aleatoric and total uncertainty respectively, do behave as expected in our evaluations. Mutual information however, our metric for epistemic uncertainty, does not behave as expected and should therefore in application be replaced with a more appropiate measure.  
+This approach of measuring the faithfulness of calculated epistemic and aleatoric uncertainty metrics is the main contribution.
+
+Instead of using manual_training_inference.py directly, we have written our own main function my_main.py, using the former one.
+
 
 # :mag_right: HateXplain: A Benchmark Dataset for Explainable Hate Speech Detection [Accepted at AAAI 2021]
 
@@ -93,13 +99,3 @@ For more details about the end to end pipleline visit [our_demo](https://github.
 2. For CNN-GRU model we used the original [repo](https://github.com/ziqizhang/chase) for reference.
 3. For Evaluation using the Explanantion metrics we used the ERASER benchmark [repo](https://github.com/jayded/eraserbenchmark). Please look into their repo and paper for more details.
 
-
-### Todos
-- [x] Add arxiv paper link and description.
-- [ ] Release better documentation for Models and Preprocess sections.
-- [ ] Add other Transformers model to the pipeline.
-- [x] Upload our model to [transformers community](https://huggingface.co/models) to make them public
-- [x] Create an interface for **social scientists** where they can use our models easily with their data
-
-
-#####  :thumbsup: The repo is still in active developements. Feel free to create an [issue](https://github.com/punyajoy/HateXplain/issues) !!  :thumbsup:
