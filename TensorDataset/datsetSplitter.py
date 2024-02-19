@@ -126,19 +126,6 @@ def createDatasetSplit(params):
             X_test=dataset[dataset['Post_id'].isin(post_id_dict['test'])]
 
 
-    #     # remove 2 target groups from EU training dataset
-    #     if params['EU']:
-    #         new_X_train = []
-    #         np_X_train = X_train.to_numpy()
-    #         for row in np_X_train:
-    #             if row[3] == 0:
-    #                 new_X_train.append(row)
-    # #           else:
-    # #               X_test.append(item)
-    #         print(new_X_train[1])
-    #         print(np_X_train[1])
-    #         X_train = pd.DataFrame(new_X_train,columns=X_train.columns)
-
         if(params['bert_tokens']):
             vocab_own=None
             vocab_size =0
@@ -156,19 +143,6 @@ def createDatasetSplit(params):
         X_train=encodeData(X_train,vocab_own,params)
         X_val=encodeData(X_val,vocab_own,params)
         X_test=encodeData(X_test,vocab_own,params)
-
-    #     # remove 2 target groups from EU training dataset
-    #     if params['EU']:
-    #         print('we got x_train: ' + str(X_train))
-    #         new_X_train = []
-    #         for row in X_train:
-    #             if row[3] == 0:
-    #                 new_X_train.append(row)
-    # #           else:
-    # #               X_test.append(item)
-    #         print(new_X_train[2])
-    #         print(X_train[2])
-    #         X_train = new_X_train
 
         print("total dataset size:", len(X_train)+len(X_val)+len(X_test))
 
