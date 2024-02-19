@@ -54,15 +54,22 @@ Sample Entry:
 
 
 ### Post ids divisions
-[Post_id_divisions](https://github.com/punyajoy/HateXplain/blob/master/Data/post_id_divisions.json) has a dictionary having train, valid and test post ids that are used to divide the dataset into train, val and test set in the ratio of 8:1:1.
+[Post_id_divisions](https://github.com/Pyrphoros42/hateBERT-hybrid-uncertainty/blob/master/Data/post_id_divisions.json) has a dictionary having train, valid and test post ids that are used to divide the dataset into train, val and test set in the ratio of 8:1:1.
 
 ### Word2Vec Model 
 We use Common Crawl (840B tokens, 2.2M vocab, cased, 300d vectors, 2.03 GB download) pretrained word vectors from [glove repo](https://nlp.stanford.edu/projects/glove/). This is required only when you plan to run the non-bert deep learning model (cnn-gru, birnn, birnn-scrat). [One click download](http://nlp.stanford.edu/data/glove.840B.300d.zip)
 
 1. Extract the glove.840B.300d.txt in this folder (Data/)
-2. Run this [python file](https://github.com/punyajoy/HateXplain/blob/master/convert_to_word2vec.py) to convert the glove model into gensim model.
+2. Run this [python file](https://github.com/Pyrphoros42/hateBERT-hybrid-uncertainty/blob/master/convert_to_word2vec.py) to convert the glove model into gensim model.
 
  :green_circle::green_circle: You are ready to roll!!! :green_circle::green_circle:
+
+ ### General Dataset Work Flow
+
+ 1. [Get_annotated_data()](https://github.com/Pyrphoros42/hateBERT-hybrid-uncertainty/blob/master/Preprocess/dataCollect.py) loads dataset.json with minor preprocessing, like assigning a final label.
+ 2. The resulting Dataframe is then called by get_training_data() or get_AU_training_data() / get_EU_training_data() in case the generated dataset is to be used to conduct the Dissent / Target Group Experiment respectively. These functions perform further preprocessing, extracting only the data to be used for training and testing and saving it in one file. 
+ 3. This generated file gets split according to the ids in [Post_id_divisions](https://github.com/Pyrphoros42/hateBERT-hybrid-uncertainty/blob/master/Data/post_id_divisions.json) by [createDatasetSplit()](https://github.com/Pyrphoros42/hateBERT-hybrid-uncertainty/blob/master/TensorDataset/datsetSplitter.py) and saved accordingly.
+ 4. [combine_features()](https://github.com/Pyrphoros42/hateBERT-hybrid-uncertainty/blob/master/TensorDataset/dataLoader.py) finally generates the appropriate dataloader for the experiment.
 
 
 ### Note:
